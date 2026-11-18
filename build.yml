@@ -1,0 +1,59 @@
+name: Build JUDGETUNE
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  dsp-tests:
+    name: DSP unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run engine tests
+        working-directory: Tests
+        run: |
+          g++ -O2 -std=c++17 -I../Source engine_test.cpp -o engine_test
+          ./engine_test
+
+  windows:
+    name: Windows (VST3 + Standalone)
+    runs-on: windows-latest
+    needs: dsp-tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DJT_COPY_AFTER_BUILD=OFF
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: JUDGETUNE-Windows-x64
+          path: |
+            build/JUDGETUNE_artefacts/Release/VST3/**
+            build/JUDGETUNE_artefacts/Release/Standalone/**
+
+  macos:
+    name: macOS (VST3 + Standalone, universal)
+    runs-on: macos-latest
+    needs: dsp-tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DJT_COPY_AFTER_BUILD=OFF
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Package
+        run: |
+          mkdir out
+          cp -R build/JUDGETUNE_artefacts/Release/VST3/JUDGETUNE.vst3 out/ || cp -R build/JUDGETUNE_artefacts/VST3/JUDGETUNE.vst3 out/
+          cd out && zip -qr ../JUDGETUNE-macOS.zip .
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: JUDGETUNE-macOS
+          path: JUDGETUNE-macOS.zip
